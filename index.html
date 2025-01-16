@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Interactive Germany Map - katya</title>
+    <title>Interactive Germany Map - Crop and Dynamic Colors</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
     <style>
@@ -9,6 +9,7 @@
             height: 600px;
             width: 60%;
             margin-left: 0;
+            display: inline-block;
         }
         #info-box-container {
             position: absolute;
@@ -50,7 +51,7 @@
             display: block;
             margin-top: 10px;
         }
-        #select-all-btn {
+        #select-all-btn, #deselect-all-btn {
             margin-bottom: 10px;
             padding: 8px 16px;
             background-color: #007bff;
@@ -59,8 +60,14 @@
             cursor: pointer;
             font-family: Arial, sans-serif;
         }
+        #deselect-all-btn {
+            background-color: #dc3545;
+        }
         #select-all-btn:hover {
             background-color: #0056b3;
+        }
+        #deselect-all-btn:hover {
+            background-color: #c82333;
         }
     </style>
 </head>
@@ -69,6 +76,7 @@
     <div id="info-box-container"></div>
     <div id="slider-container">
         <button id="select-all-btn">Select All</button>
+        <button id="deselect-all-btn">Deselect All</button>
         <label for="temperature-slider">Temperature:</label>
         <input type="range" id="temperature-slider" min="0" max="20" value="0" />
         <span id="temperature-value">+0<span>&#176;</span>C</span>
@@ -96,6 +104,9 @@
         const highlightedDistricts = new Map(); // Store highlighted districts and their original colors
         const infoBoxContainer = document.getElementById('info-box-container');
         const selectAllBtn = document.getElementById('select-all-btn');
+        const deselectAllBtn = document.getElementById('deselect-all-btn');
+
+        let geoJsonLayer; // Reference to the GeoJSON layer
 
         const defaultStyle = {
             fillColor: 'silver',
@@ -104,15 +115,6 @@
             color: 'white',
             fillOpacity: 0.7
         };
-
-        const highlightedStyle = {
-            fillColor: 'yellow',
-            weight: 3,
-            color: 'black',
-            fillOpacity: 0.9
-        };
-
-        let geoJsonLayer; // Reference to the GeoJSON layer
 
         fetch('germany_new.geojson')
             .then(response => response.json())
@@ -126,8 +128,7 @@
                     }
                 }).addTo(map);
 
-                // Crop everything outside Germany
-                cropOutsideGermany(data);
+                map.fitBounds(geoJsonLayer.getBounds());
             });
 
         function toggleDistrictHighlight(layer, feature) {
@@ -136,19 +137,13 @@
 
             if (highlightedDistricts.has(layer)) {
                 // Remove highlight and info
-                layer.setStyle({
-                    fillColor: highlightedDistricts.get(layer),
-                    weight: 2,
-                    opacity: 1,
-                    color: 'white',
-                    fillOpacity: 0.7
-                });
+                layer.setStyle(defaultStyle);
                 highlightedDistricts.delete(layer);
                 removeDistrictInfo(name);
             } else {
                 // Highlight and add info
                 highlightedDistricts.set(layer, layer.options.fillColor || 'silver');
-                layer.setStyle(highlightedStyle);
+                updateRegionColor(layer);
                 addDistrictInfo(name, code);
             }
         }
@@ -174,30 +169,31 @@
             }
         }
 
-        // Crop functionality
-        function cropOutsideGermany(geoJsonData) {
-            const worldBounds = [[-90, -180], [90, 180]]; // Full world bounds
-            const germanyMask = L.geoJSON(geoJsonData);
+        function updateRegionColor(layer) {
+            const temperature = sliders.temperature.value;
+            const humidity = sliders.humidity.value;
+            const windSpeed = sliders.windSpeed.value;
+            const precipitation = sliders.precipitation.value;
 
-            const mask = L.polygon([
-                [worldBounds[0][0], worldBounds[0][1]], // Bottom-left
-                [worldBounds[0][0], worldBounds[1][1]], // Bottom-right
-                [worldBounds[1][0], worldBounds[1][1]], // Top-right
-                [worldBounds[1][0], worldBounds[0][1]], // Top-left
-                [worldBounds[0][0], worldBounds[0][1]], // Back to Bottom-left
-            ], {
-                color: 'black',
-                fillColor: 'black',
-                fillOpacity: 0.8,
-                interactive: false,
-            }).addTo(map);
-
-            map.fitBounds(germanyMask.getBounds()); // Zoom to Germany
-            map.addLayer(mask);
-            mask.bringToBack(); // Ensure mask is below the Germany layer
+            const color = getColorForProperties(temperature, humidity, windSpeed, precipitation);
+            layer.setStyle({
+                fillColor: color,
+                weight: 2,
+                opacity: 1,
+                color: 'white',
+                fillOpacity: 0.7
+            });
         }
 
-        // Select All functionality
+        function getColorForProperties(temperature, humidity, windSpeed, precipitation) {
+            const tempColor = Math.min(255, Math.floor(255 * (temperature / 20)));
+            const humidityColor = Math.min(255, Math.floor(255 * (humidity / 100)));
+            const windColor = Math.min(255, Math.floor(255 * (windSpeed / 50)));
+            const precipColor = Math.min(255, Math.floor(255 * (precipitation / 200)));
+
+            return `rgb(${tempColor}, ${humidityColor}, ${windColor})`;
+        }
+
         selectAllBtn.addEventListener('click', function () {
             geoJsonLayer.eachLayer(function (layer) {
                 const feature = layer.feature;
@@ -207,7 +203,15 @@
             });
         });
 
-        // Slider handling (unchanged from previous version)
+        deselectAllBtn.addEventListener('click', function () {
+            geoJsonLayer.eachLayer(function (layer) {
+                const feature = layer.feature;
+                if (highlightedDistricts.has(layer)) {
+                    toggleDistrictHighlight(layer, feature);
+                }
+            });
+        });
+
         const sliders = {
             temperature: document.getElementById('temperature-slider'),
             humidity: document.getElementById('humidity-slider'),
@@ -224,6 +228,11 @@
                     : key === 'windSpeed'
                     ? `${this.value} km/h`
                     : `${this.value} mm`;
+
+                // Update colors of all selected regions
+                highlightedDistricts.forEach((_, layer) => {
+                    updateRegionColor(layer);
+                });
             });
         });
     </script>
