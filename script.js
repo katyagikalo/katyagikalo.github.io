@@ -26,6 +26,18 @@ const highlightStyle = {
     fillOpacity: 0.7
 };
 
+const cropColors = {
+    "Potato": "#f4a261",
+    "Silage Maize": "#2a9d8f",
+    "Winter Wheat": "#e76f51",
+    "Spring Barley": "#264653",
+    "Sugarbeet": "#e9c46a",
+    "Oats": "#a8dadc",
+    "Rye": "#457b9d",
+    "Canola": "#f94144"
+};
+
+
 // Fetch GeoJSON and add layers
 fetch('merged_counties_all.geojson')
     .then(response => response.json())
@@ -85,13 +97,11 @@ function formatCropName(cropName) {
         .join(' '); // Join the words back with spaces
 }
 
-// Add district info box
 function addDistrictInfo(layer, feature, filters) {
     const districtName = Array.isArray(feature.properties.krs_name) ? feature.properties.krs_name[0] : 'Unknown District';
     const krsCode = Array.isArray(feature.properties.krs_code) ? feature.properties.krs_code[0] : 'Unknown Code';
     const climateData = feature.properties.climate_data || [];
 
-    // Filter climate data based on slider values
     const matchingData = climateData.filter(entry =>
         entry["2 metre temperature"] === filters.temperature &&
         entry["Total precipitation"] === filters.precipitation &&
@@ -99,7 +109,8 @@ function addDistrictInfo(layer, feature, filters) {
     );
 
     let climateHtml = '<strong>Climate Data:</strong><ul>';
-    let yieldHtml = '<strong>Crop Yields (t/ha):</strong><ul>';
+    let yieldHtml = '<strong>Top 3 Crops (t/ha):</strong><ul>';
+    let bestCrop = null;
 
     if (matchingData.length > 0) {
         const params = matchingData[0];
@@ -108,10 +119,9 @@ function addDistrictInfo(layer, feature, filters) {
         const radiation = params["Surface net short-wave (solar) radiation"] || "N/A";
 
         climateHtml += `
-            <li>Temperature: ${temperature}C</li>
-            <li>Humidity: 20%</li>
-            <li>Rainfall: ${precipitation} mm</li>
-            <li>Solar Radiation: ${radiation} W/m2</li>
+            <li>Temperature: ${temperature}°C</li>
+            <li>Precipitation: ${precipitation} mm</li>
+            <li>Solar Radiation: ${radiation} W/m²</li>
         `;
 
         const maxYields = {};
@@ -126,14 +136,20 @@ function addDistrictInfo(layer, feature, filters) {
             }
         });
 
+        // Sort yields in descending order and select the top 3
         const sortedYields = Object.entries(maxYields)
             .sort(([, a], [, b]) => b - a)
             .slice(0, 3);
 
-        sortedYields.forEach(([crop, yieldValue]) => {
-            const formattedCropName = formatCropName(crop);
-            yieldHtml += `<li>${formattedCropName}: ${yieldValue.toFixed(1)} t/ha</li>`;
-        });
+        if (sortedYields.length > 0) {
+            const [bestCropKey] = sortedYields[0];
+            bestCrop = formatCropName(bestCropKey);
+
+            sortedYields.forEach(([crop, yieldValue]) => {
+                const formattedCropName = formatCropName(crop);
+                yieldHtml += `<li>${formattedCropName}: ${yieldValue.toFixed(1)} t/ha</li>`;
+            });
+        }
     } else {
         climateHtml += '<li>No data matching filters.</li>';
         yieldHtml += '<li>No crop yield data available.</li>';
@@ -150,21 +166,59 @@ function addDistrictInfo(layer, feature, filters) {
             ${climateHtml}
             ${yieldHtml}
         `;
-        return;
+    } else {
+        const districtInfoBox = document.createElement('div');
+        districtInfoBox.id = `info-box-${districtName}`;
+        districtInfoBox.className = 'info-box';
+        districtInfoBox.innerHTML = `
+            <strong>${districtName}</strong>
+            <span>Code: ${krsCode}</span><br>
+            ${climateHtml}
+            ${yieldHtml}
+        `;
+        infoBoxContainer.appendChild(districtInfoBox);
     }
 
-    const districtInfoBox = document.createElement('div');
-    districtInfoBox.id = `info-box-${districtName}`;
-    districtInfoBox.className = 'info-box';
-    districtInfoBox.innerHTML = `
-        <strong>${districtName}</strong>
-        <span>Code: ${krsCode}</span><br>
-        ${climateHtml}
-        ${yieldHtml}
-    `;
-
-    infoBoxContainer.appendChild(districtInfoBox);
+    // Apply the best crop's color to the district
+    if (bestCrop && cropColors[bestCrop]) {
+        layer.setStyle({
+            fillColor: cropColors[bestCrop],
+            weight: 2,
+            opacity: 1,
+            color: 'grey',
+            fillOpacity: 0.7
+        });
+    }
 }
+
+function createLegend() {
+    const sliderContainer = document.getElementById('slider-container');
+    const legend = document.createElement('div');
+    legend.id = 'crop-legend';
+    legend.style.marginTop = '10px';
+    legend.style.padding = '10px';
+    legend.style.background = 'white';
+    legend.style.border = '1px solid grey';
+    legend.style.boxShadow = '0 2px 5px rgba(0,0,0,0.3)';
+    legend.style.fontFamily = 'Arial, sans-serif';
+    legend.style.fontSize = '14px';
+
+    legend.innerHTML = '<strong>Crop Legend</strong><ul style="list-style: none; padding: 0; margin: 0;">';
+
+    for (const [crop, color] of Object.entries(cropColors)) {
+        legend.innerHTML += `<li style="margin: 5px 0;">
+            <span style="display: inline-block; width: 20px; height: 10px; background: ${color}; margin-right: 5px;"></span>${crop}
+        </li>`;
+    }
+
+    legend.innerHTML += '</ul>';
+    sliderContainer.appendChild(legend);
+}
+
+// Call this function after the page loads or map initializes
+createLegend();
+
+
 
 // Update info boxes for all highlighted districts when sliders change
 function updateDistrictInfoBoxes(filters) {
