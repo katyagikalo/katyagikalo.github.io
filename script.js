@@ -119,9 +119,9 @@ function addDistrictInfo(layer, feature, filters) {
         const radiation = params["Surface net short-wave (solar) radiation"] || "N/A";
 
         climateHtml += `
-            <li>Temperature: ${temperature}°C</li>
+            <li>Temperature: ${temperature}\u00B0C</li>
             <li>Precipitation: ${precipitation} mm</li>
-            <li>Solar Radiation: ${radiation} W/m²</li>
+            <li>Solar Radiation: ${radiation} W/m<sup>2</sup></li>
         `;
 
         const maxYields = {};
@@ -259,7 +259,7 @@ districtDropdown.addEventListener('change', function () {
 // Event listeners for sliders
 document.getElementById('temperature-slider').addEventListener('input', function () {
     filters.temperature = parseInt(this.value);
-    document.getElementById('temperature-value').textContent = `${filters.temperature}C`;
+    document.getElementById('temperature-value').textContent = `${filters.temperature}\u00B0C`;
     updateDistrictInfoBoxes(filters);
 });
 
@@ -271,13 +271,13 @@ document.getElementById('precipitation-slider').addEventListener('input', functi
 
 document.getElementById('radiation-slider').addEventListener('input', function () {
     filters.radiation = parseInt(this.value);
-    document.getElementById('radiation-value').textContent = `${filters.radiation} W/m2`;
+    document.getElementById('radiation-value').textContent = `${filters.radiation} W/m<sup>2</sup>`;
     updateDistrictInfoBoxes(filters);
 });
 
 // Filters initialization
 const filters = {
-    temperature: 11,
+    temperature: 12,
     precipitation: 35,
     radiation: 5
 };
