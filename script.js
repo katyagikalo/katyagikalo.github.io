@@ -50,27 +50,48 @@ fetch('merged_counties_all.geojson')
     })
     .catch(error => console.error('Error loading GeoJSON:', error));
 
+
 // Toggle district highlight
 function toggleDistrictHighlight(layer, feature, filters) {
     const districtName = Array.isArray(feature.properties.krs_name) ? feature.properties.krs_name[0] : 'Unknown District';
 
     if (highlightedDistricts.has(layer)) {
+        // Remove highlight and info box
         layer.setStyle(defaultStyle);
         highlightedDistricts.delete(layer);
         removeDistrictInfo(districtName);
     } else {
+        // Highlight the district and add its info box with current filter values
         layer.setStyle(highlightStyle);
         highlightedDistricts.set(layer, districtName);
         addDistrictInfo(layer, feature, filters);
     }
 }
 
+function formatCropName(cropName) {
+    const exceptions = {
+        "potat_tot": "Potato",
+        "silage_maize": "Silage Maize",
+        "winter_wheat": "Winter Wheat",
+        "spring_barley": "Spring Barley"
+    };
+    if (exceptions[cropName]) {
+        return exceptions[cropName];
+    }
+    // Replace underscores with spaces and capitalize each word
+    return cropName
+        .split('_') // Split the string by underscores
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1)) // Capitalize each word
+        .join(' '); // Join the words back with spaces
+}
+
+// Add district info box
 function addDistrictInfo(layer, feature, filters) {
     const districtName = Array.isArray(feature.properties.krs_name) ? feature.properties.krs_name[0] : 'Unknown District';
     const krsCode = Array.isArray(feature.properties.krs_code) ? feature.properties.krs_code[0] : 'Unknown Code';
     const climateData = feature.properties.climate_data || [];
 
-    // Filter climate data based on selected sliders
+    // Filter climate data based on slider values
     const matchingData = climateData.filter(entry =>
         entry["2 metre temperature"] === filters.temperature &&
         entry["Total precipitation"] === filters.precipitation &&
@@ -88,8 +109,9 @@ function addDistrictInfo(layer, feature, filters) {
 
         climateHtml += `
             <li>Temperature: ${temperature}C</li>
-            <li>Precipitation: ${precipitation} mm</li>
-            <li>Solar Radiation: ${radiation} W/m</li>
+            <li>Humidity: 20%</li>
+            <li>Rainfall: ${precipitation} mm</li>
+            <li>Solar Radiation: ${radiation} W/m2</li>
         `;
 
         const maxYields = {};
@@ -109,7 +131,8 @@ function addDistrictInfo(layer, feature, filters) {
             .slice(0, 3);
 
         sortedYields.forEach(([crop, yieldValue]) => {
-            yieldHtml += `<li>${crop}: ${yieldValue.toFixed(1)} t/ha</li>`;
+            const formattedCropName = formatCropName(crop);
+            yieldHtml += `<li>${formattedCropName}: ${yieldValue.toFixed(1)} t/ha</li>`;
         });
     } else {
         climateHtml += '<li>No data matching filters.</li>';
@@ -143,20 +166,43 @@ function addDistrictInfo(layer, feature, filters) {
     infoBoxContainer.appendChild(districtInfoBox);
 }
 
-function removeDistrictInfo(districtName) {
-    const box = document.getElementById(`info-box-${districtName}`);
-    if (box) {
-        box.remove();
-    }
+// Update info boxes for all highlighted districts when sliders change
+function updateDistrictInfoBoxes(filters) {
+    geoJsonLayer.eachLayer(layer => {
+        const feature = layer.feature;
+        if (highlightedDistricts.has(layer)) {
+            addDistrictInfo(layer, feature, filters);
+        }
+    });
 }
 
-// Sliders and filters
-const filters = {
-    temperature: 10,
-    precipitation: 10,
-    radiation: 5
-};
+// Dropdown selection (preserve multiple selections)
+districtDropdown.addEventListener('change', function () {
+    const selectedDistrict = this.value;
 
+    if (!selectedDistrict) {
+        // If no district is selected, do nothing
+        return;
+    }
+
+    geoJsonLayer.eachLayer(layer => {
+        const feature = layer.feature;
+        const districtName = Array.isArray(feature.properties.krs_name) ? feature.properties.krs_name[0] : 'Unknown District';
+
+        if (districtName === selectedDistrict) {
+            // Highlight the district and add its info box
+            if (!highlightedDistricts.has(layer)) {
+                layer.setStyle(highlightStyle);
+                highlightedDistricts.set(layer, districtName);
+                addDistrictInfo(layer, feature, filters);
+                map.fitBounds(layer.getBounds());
+            }
+        }
+    });
+});
+
+
+// Event listeners for sliders
 document.getElementById('temperature-slider').addEventListener('input', function () {
     filters.temperature = parseInt(this.value);
     document.getElementById('temperature-value').textContent = `${filters.temperature}C`;
@@ -171,9 +217,17 @@ document.getElementById('precipitation-slider').addEventListener('input', functi
 
 document.getElementById('radiation-slider').addEventListener('input', function () {
     filters.radiation = parseInt(this.value);
-    document.getElementById('radiation-value').textContent = `${filters.radiation} W/m`;
+    document.getElementById('radiation-value').textContent = `${filters.radiation} W/m2`;
     updateDistrictInfoBoxes(filters);
 });
+
+// Filters initialization
+const filters = {
+    temperature: 11,
+    precipitation: 35,
+    radiation: 5
+};
+
 
 function updateDistrictInfoBoxes(filters) {
     geoJsonLayer.eachLayer(layer => {
@@ -185,12 +239,21 @@ function updateDistrictInfoBoxes(filters) {
     });
 }
 
+function removeDistrictInfo(districtName) {
+    const box = document.getElementById(`info-box-${districtName}`);
+    if (box) {
+        box.remove();
+    }
+}
+
 // Select All functionality
 document.getElementById('select-all-btn').addEventListener('click', () => {
     geoJsonLayer.eachLayer(layer => {
         const feature = layer.feature;
+        const districtName = Array.isArray(feature.properties.krs_name) ? feature.properties.krs_name[0] : 'Unknown District';
+
         if (!highlightedDistricts.has(layer)) {
-            const districtName = Array.isArray(feature.properties.krs_name) ? feature.properties.krs_name[0] : 'Unknown District';
+            // Highlight the district and add its info box
             layer.setStyle(highlightStyle);
             highlightedDistricts.set(layer, districtName);
             addDistrictInfo(layer, feature, filters);
@@ -198,16 +261,17 @@ document.getElementById('select-all-btn').addEventListener('click', () => {
     });
 });
 
-// Deselect All functionality
 document.getElementById('deselect-all-btn').addEventListener('click', () => {
-    geoJsonLayer.eachLayer(layer => {
-        const feature = layer.feature;
-        const districtName = Array.isArray(feature.properties.krs_name) ? feature.properties.krs_name[0] : 'Unknown District';
+    // Iterate through all highlighted layers
+    highlightedDistricts.forEach((districtName, layer) => {
+        // Reset layer style to default
+        layer.setStyle(defaultStyle);
 
-        if (highlightedDistricts.has(layer)) {
-            layer.setStyle(defaultStyle);
-            highlightedDistricts.delete(layer);
-            removeDistrictInfo(districtName);
-        }
+        // Remove the corresponding info box
+        removeDistrictInfo(districtName);
     });
+
+    // Clear the map of highlighted districts
+    highlightedDistricts.clear();
 });
+
