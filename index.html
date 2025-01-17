@@ -1,41 +1,51 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Interactive Germany Map - Crop and Dynamic Colors</title>
+    <title>Interactive Germany Map - Cropped</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
     <style>
         #map {
             height: 600px;
-            width: 60%;
+            width: 50%;
             margin-left: 0;
             display: inline-block;
         }
         #info-box-container {
             position: absolute;
-            top: 60px;
-            right: 300px;
+            top: 60px; /* Adjust as needed */
+            left: 10px;
             display: flex;
             flex-direction: column;
-            gap: 10px;
+            gap: 5px; /* Compact spacing between boxes */
+            max-width: 200px; /* Limit width for compactness */
+            z-index: 1000; /* Ensure it's above other elements */
         }
+
         .info-box {
-            width: 250px;
-            background-color: #f9f9f9;
+            padding: 8px;
             border: 1px solid #ccc;
-            padding: 10px;
+            background: #ffffff;
+            box-shadow: 0px 2px 4px rgba(0, 0, 0, 0.1);
             font-family: Arial, sans-serif;
-            box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
+            font-size: 12px;
+            line-height: 1.4;
+            overflow-wrap: break-word; /* Handle long district names */
         }
+
         .info-box strong {
-            font-size: 16px;
             display: block;
-            margin-bottom: 5px;
-            text-align: center;
+            font-size: 14px;
+            margin-bottom: 3px;
+            text-align: left;
+            color: #333;
         }
+
         .info-box span {
+            font-size: 12px;
             color: #555;
         }
+
         #slider-container {
             position: absolute;
             top: 10px;
@@ -73,168 +83,35 @@
 </head>
 <body>
     <div id="map"></div>
-    <div id="info-box-container"></div>
+    <div id="info-box-container" style="position: absolute; top: 10px; left: 10px;"></div>
+    <div id="info-box"></div>
     <div id="slider-container">
         <button id="select-all-btn">Select All</button>
         <button id="deselect-all-btn">Deselect All</button>
+
         <label for="temperature-slider">Temperature:</label>
-        <input type="range" id="temperature-slider" min="0" max="20" value="0" />
-        <span id="temperature-value">+0<span>&#176;</span>C</span>
+        <input type="range" id="temperature-slider" min="0" max="40" value="10" />
+        <span id="temperature-value">11C</span>
 
-        <label for="humidity-slider">Humidity:</label>
-        <input type="range" id="humidity-slider" min="0" max="100" value="50" />
-        <span id="humidity-value">50%</span>
+        <label for="humidity-slider">Humidity</label>
+        <input type="range" id="humidity-slider" min="0" max="100" value="20" />
+        <span id="humidity-value">20%</span>
 
-        <label for="wind-speed-slider">Wind Speed:</label>
-        <input type="range" id="wind-speed-slider" min="0" max="50" value="10" />
-        <span id="wind-speed-value">10 km/h</span>
+        <label for="precipitation-slider">Rainfall:</label>
+        <input type="range" id="precipitation-slider" min="0" max="100" value="35" />
+        <span id="precipitation-value">35 mm</span>
 
-        <label for="precipitation-slider">Precipitation:</label>
-        <input type="range" id="precipitation-slider" min="0" max="200" value="0" />
-        <span id="precipitation-value">0 mm</span>
+        <label for="radiation-slider">Solar Radiation:</label>
+        <input type="range" id="radiation-slider" min="0" max="50" value="5" />
+        <span id="radiation-value">5 W/m2</span>
+
+        <label for="district-dropdown">Select District:</label>
+        <select id="district-dropdown">
+            <option value="">-- Select a District --</option>
+        </select>
+
     </div>
+<script src="script.js"></script>
 
-    <script>
-        var map = L.map('map').setView([51.1657, 10.4515], 6);
-
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png', {
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CartoDB</a>'
-        }).addTo(map);
-
-        const highlightedDistricts = new Map(); // Store highlighted districts and their original colors
-        const infoBoxContainer = document.getElementById('info-box-container');
-        const selectAllBtn = document.getElementById('select-all-btn');
-        const deselectAllBtn = document.getElementById('deselect-all-btn');
-
-        let geoJsonLayer; // Reference to the GeoJSON layer
-
-        const defaultStyle = {
-            fillColor: 'silver',
-            weight: 2,
-            opacity: 1,
-            color: 'white',
-            fillOpacity: 0.7
-        };
-
-        fetch('germany_new.geojson')
-            .then(response => response.json())
-            .then(data => {
-                geoJsonLayer = L.geoJSON(data, {
-                    style: defaultStyle,
-                    onEachFeature: function (feature, layer) {
-                        layer.on('click', function () {
-                            toggleDistrictHighlight(layer, feature);
-                        });
-                    }
-                }).addTo(map);
-
-                map.fitBounds(geoJsonLayer.getBounds());
-            });
-
-        function toggleDistrictHighlight(layer, feature) {
-            const name = feature.properties.krs_name || "Unknown Region";
-            const code = feature.properties.krs_code || "No Code Available";
-
-            if (highlightedDistricts.has(layer)) {
-                // Remove highlight and info
-                layer.setStyle(defaultStyle);
-                highlightedDistricts.delete(layer);
-                removeDistrictInfo(name);
-            } else {
-                // Highlight and add info
-                highlightedDistricts.set(layer, layer.options.fillColor || 'silver');
-                updateRegionColor(layer);
-                addDistrictInfo(name, code);
-            }
-        }
-
-        function addDistrictInfo(name, code) {
-            const existingInfo = document.getElementById(`info-${name}`);
-            if (!existingInfo) {
-                const infoDiv = document.createElement('div');
-                infoDiv.id = `info-${name}`;
-                infoDiv.className = 'info-box';
-                infoDiv.innerHTML = `
-                    <strong>${name}</strong>
-                    <span>KRS Code: ${code}</span>
-                `;
-                infoBoxContainer.appendChild(infoDiv);
-            }
-        }
-
-        function removeDistrictInfo(name) {
-            const infoDiv = document.getElementById(`info-${name}`);
-            if (infoDiv) {
-                infoBoxContainer.removeChild(infoDiv);
-            }
-        }
-
-        function updateRegionColor(layer) {
-            const temperature = sliders.temperature.value;
-            const humidity = sliders.humidity.value;
-            const windSpeed = sliders.windSpeed.value;
-            const precipitation = sliders.precipitation.value;
-
-            const color = getColorForProperties(temperature, humidity, windSpeed, precipitation);
-            layer.setStyle({
-                fillColor: color,
-                weight: 2,
-                opacity: 1,
-                color: 'white',
-                fillOpacity: 0.7
-            });
-        }
-
-        function getColorForProperties(temperature, humidity, windSpeed, precipitation) {
-            const tempColor = Math.min(255, Math.floor(255 * (temperature / 20)));
-            const humidityColor = Math.min(255, Math.floor(255 * (humidity / 100)));
-            const windColor = Math.min(255, Math.floor(255 * (windSpeed / 50)));
-            const precipColor = Math.min(255, Math.floor(255 * (precipitation / 200)));
-
-            return `rgb(${tempColor}, ${humidityColor}, ${windColor})`;
-        }
-
-        selectAllBtn.addEventListener('click', function () {
-            geoJsonLayer.eachLayer(function (layer) {
-                const feature = layer.feature;
-                if (!highlightedDistricts.has(layer)) {
-                    toggleDistrictHighlight(layer, feature);
-                }
-            });
-        });
-
-        deselectAllBtn.addEventListener('click', function () {
-            geoJsonLayer.eachLayer(function (layer) {
-                const feature = layer.feature;
-                if (highlightedDistricts.has(layer)) {
-                    toggleDistrictHighlight(layer, feature);
-                }
-            });
-        });
-
-        const sliders = {
-            temperature: document.getElementById('temperature-slider'),
-            humidity: document.getElementById('humidity-slider'),
-            windSpeed: document.getElementById('wind-speed-slider'),
-            precipitation: document.getElementById('precipitation-slider')
-        };
-
-        Object.keys(sliders).forEach(key => {
-            sliders[key].addEventListener('input', function () {
-                document.getElementById(`${key}-value`).textContent = key === 'temperature'
-                    ? `+${this.value}${String.fromCharCode(176)}C`
-                    : key === 'humidity'
-                    ? `${this.value}%`
-                    : key === 'windSpeed'
-                    ? `${this.value} km/h`
-                    : `${this.value} mm`;
-
-                // Update colors of all selected regions
-                highlightedDistricts.forEach((_, layer) => {
-                    updateRegionColor(layer);
-                });
-            });
-        });
-    </script>
 </body>
 </html>
